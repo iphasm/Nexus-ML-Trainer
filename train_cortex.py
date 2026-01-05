@@ -41,11 +41,28 @@ logger = logging.getLogger(__name__)
 # Global flag for interruption handling
 interrupted = False
 
-# Default symbols to train on (can be overridden via config)
+# Default symbols to train on - OPTIMIZED based on correlation analysis
+# Criteria: Low correlation (<0.85), good liquidity, diverse sectors
+# User preferences preserved: ADA, DOGE, DOT, SOL
 DEFAULT_SYMBOLS = [
+    # === MAJOR CAPS (Core positions) ===
     'BTCUSDT', 'ETHUSDT', 'BNBUSDT', 'SOLUSDT', 'XRPUSDT',
-    'ADAUSDT', 'AVAXUSDT', 'DOGEUSDT', 'DOTUSDT', 'MATICUSDT',
-    'LINKUSDT', 'ATOMUSDT', 'LTCUSDT', 'UNIUSDT', 'APTUSDT'
+    'ADAUSDT', 'AVAXUSDT', 'DOTUSDT', 'LINKUSDT',
+    
+    # === MEME COINS (User preference + diversity) ===
+    'DOGEUSDT', 'WIFUSDT', '1000PEPEUSDT', 'PONKEUSDT',
+    
+    # === DEFI (Low-correlation representatives) ===
+    'AAVEUSDT', 'CRVUSDT', 'SNXUSDT', 'LDOUSDT', 'DYDXUSDT',
+    
+    # === AI/TECH ===
+    'WLDUSDT', 'INJUSDT',
+    
+    # === L1/INFRA (Low-correlation picks) ===
+    'NEARUSDT', 'ARBUSDT', 'LTCUSDT', 'BCHUSDT', 'ETCUSDT', 'ALGOUSDT',
+    
+    # === BYBIT EXCLUSIVES (for coverage) ===
+    'FLOWUSDT', 'PENDLEUSDT', 'MNTUSDT', 'XAIUSDT'
 ]
 
 INTERVAL = '15m'
@@ -148,12 +165,28 @@ def fetch_crypto_data(symbol: str, max_candles: int = 15000, verbose: bool = Fal
             'AVAXUSDT': 'AVAX-USD',
             'DOGEUSDT': 'DOGE-USD',
             'DOTUSDT': 'DOT-USD',
-            'MATICUSDT': 'MATIC-USD',
             'LINKUSDT': 'LINK-USD',
-            'ATOMUSDT': 'ATOM-USD',
+            # Meme coins
+            'WIFUSDT': 'WIF-USD',
+            '1000PEPEUSDT': 'PEPE-USD',
+            # DeFi
+            'AAVEUSDT': 'AAVE-USD',
+            'CRVUSDT': 'CRV-USD',
+            'SNXUSDT': 'SNX-USD',
+            'LDOUSDT': 'LDO-USD',
+            'DYDXUSDT': 'DYDX-USD',
+            # AI/Tech
+            'WLDUSDT': 'WLD-USD',
+            'INJUSDT': 'INJ-USD',
+            # L1/Infra
+            'NEARUSDT': 'NEAR-USD',
+            'ARBUSDT': 'ARB-USD',
             'LTCUSDT': 'LTC-USD',
-            'UNIUSDT': 'UNI-USD',
-            'APTUSDT': 'APT-USD',
+            'BCHUSDT': 'BCH-USD',
+            'ETCUSDT': 'ETC-USD',
+            'ALGOUSDT': 'ALGO-USD',
+            # Note: PONKEUSDT, FLOWUSDT, PENDLEUSDT, MNTUSDT, XAIUSDT 
+            # don't have yfinance mappings - Binance is primary source
         }
         
         yf_symbol = yf_symbol_map.get(symbol)
