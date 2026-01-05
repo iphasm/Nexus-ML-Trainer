@@ -22,5 +22,5 @@ RUN mkdir -p /app/models
 ENV PYTHONUNBUFFERED=1
 ENV PYTHONDONTWRITEBYTECODE=1
 
-# Default command - run training
-CMD ["python", "train_cortex.py", "--candles", "15000", "--auto"]
+# Default command - run training with 35000 candles
+CMD ["python", "train_cortex.py", "--candles", "35000", "--auto"]
