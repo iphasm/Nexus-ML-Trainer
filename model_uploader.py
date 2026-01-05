@@ -5,6 +5,7 @@ Allows Nexus-TB to download and use the latest model without file sharing.
 
 import os
 import io
+import json
 import joblib
 import logging
 from datetime import datetime
@@ -12,6 +13,7 @@ from typing import Optional, Dict, Any, Tuple
 
 import psycopg2
 from psycopg2 import sql
+from psycopg2.extras import Json
 
 logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
 logger = logging.getLogger(__name__)
@@ -113,7 +115,7 @@ def upload_model(
                 accuracy,
                 cv_score,
                 feature_names,
-                psycopg2.extras.Json(metadata) if metadata else None
+                Json(metadata) if metadata else None
             ))
             
             model_id = cur.fetchone()[0]
