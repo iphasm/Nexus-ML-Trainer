@@ -69,7 +69,7 @@ def signal_handler(signum, frame):
 def fetch_crypto_data(symbol: str, max_candles: int = 15000, verbose: bool = False) -> pd.DataFrame:
     """
     Fetch crypto data with fallback sources.
-    Primary: Binance Futures API
+    Primary: Binance Futures API (with API keys and proxy if available)
     Fallback: yfinance (for BTC, ETH, etc.)
     """
     global interrupted
@@ -77,12 +77,33 @@ def fetch_crypto_data(symbol: str, max_candles: int = 15000, verbose: bool = Fal
     if interrupted:
         return None
     
+    # Get API credentials and proxy from environment
+    api_key = os.getenv('BINANCE_API_KEY', '')
+    api_secret = os.getenv('BINANCE_API_SECRET', '')
+    proxy_url = os.getenv('HTTP_PROXY') or os.getenv('HTTPS_PROXY') or os.getenv('PROXY_URL')
+    
     # Try Binance first
     try:
         if verbose:
-            print(f"  📊 Intentando Binance para {symbol}...", flush=True)
+            has_keys = "con API keys" if api_key else "sin API keys"
+            has_proxy = "con proxy" if proxy_url else "sin proxy"
+            print(f"  📊 Intentando Binance para {symbol} ({has_keys}, {has_proxy})...", flush=True)
         
-        client = Client()
+        # Configure client with credentials and proxy
+        client_kwargs = {}
+        if api_key and api_secret:
+            client_kwargs['api_key'] = api_key
+            client_kwargs['api_secret'] = api_secret
+        
+        if proxy_url:
+            client_kwargs['requests_params'] = {
+                'proxies': {
+                    'http': proxy_url,
+                    'https': proxy_url
+                }
+            }
+        
+        client = Client(**client_kwargs)
         
         # Fetch up to 1500 candles per request (Binance limit)
         klines = client.futures_klines(
