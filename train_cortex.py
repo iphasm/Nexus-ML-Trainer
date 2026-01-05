@@ -1,5 +1,5 @@
 """
-ML Model Training Script v3.2 - Standalone Cloud Trainer
+ML Model Training Script v3.3 - Standalone Cloud Trainer
 Designed to run on Railway as a separate service from the main bot.
 
 Features:
@@ -7,6 +7,8 @@ Features:
 - RobustScaler for crypto outlier handling
 - TimeSeriesSplit for chronological validation
 - Automatic model upload to PostgreSQL
+- IMPROVED: Multi-window labeling (tests all strategies, picks best win rate)
+- NEW: Confidence tracking for trading decisions
 """
 
 import asyncio
@@ -293,39 +295,67 @@ def simulate_trade(df: pd.DataFrame, idx: int, strategy: str, lookforward: int =
 
 def label_data(df: pd.DataFrame) -> pd.DataFrame:
     """
-    Label each row with the best strategy based on trade simulation.
+    Label each row with the BEST strategy based on comprehensive trade simulation.
+    IMPROVED: Tests ALL strategies and picks the one with highest win rate,
+    not just the first one that wins.
     """
     n = len(df)
     labels = ['mean_rev'] * n
+    confidences = [0.5] * n  # Track confidence for each label
     
     adx = df['adx'].values
     atr_pct = df['atr_pct'].values
     rsi = df['rsi'].values
     
+    strategies = ['trend', 'scalp', 'grid', 'mean_rev']
+    
     for idx in range(n - 25):
-        eligible = []
+        # Test each strategy with a small lookahead window
+        strategy_scores = {}
         
-        if adx[idx] > 25:
-            eligible.append('trend')
-        if atr_pct[idx] > 1.5:
-            eligible.append('scalp')
-        if atr_pct[idx] < 0.8:
-            eligible.append('grid')
-        if rsi[idx] < 35 or rsi[idx] > 65:
-            eligible.append('mean_rev')
+        for strat in strategies:
+            # Check eligibility based on market conditions
+            eligible = False
+            if strat == 'trend' and adx[idx] > 25:
+                eligible = True
+            elif strat == 'scalp' and atr_pct[idx] > 1.5:
+                eligible = True
+            elif strat == 'grid' and atr_pct[idx] < 0.8:
+                eligible = True
+            elif strat == 'mean_rev' and (rsi[idx] < 35 or rsi[idx] > 65):
+                eligible = True
+            
+            if not eligible:
+                strategy_scores[strat] = 0.0
+                continue
+            
+            # Test strategy with multiple lookforward windows for robustness
+            wins = 0
+            tests = 0
+            for lookforward in [12, 24, 36]:  # 3h, 6h, 9h on 15m candles
+                if idx + lookforward < n:
+                    if simulate_trade(df, idx, strat, lookforward):
+                        wins += 1
+                    tests += 1
+            
+            win_rate = wins / tests if tests > 0 else 0
+            strategy_scores[strat] = win_rate
         
-        if not eligible:
-            eligible = ['mean_rev']
-        
-        best_strategy = 'mean_rev'
-        for strat in eligible:
-            if simulate_trade(df, idx, strat):
-                best_strategy = strat
-                break
-        
-        labels[idx] = best_strategy
+        # Pick the strategy with highest win rate
+        if strategy_scores:
+            best_strategy = max(strategy_scores, key=strategy_scores.get)
+            best_score = strategy_scores[best_strategy]
+            
+            # Only assign if score > 0, otherwise default to mean_rev
+            if best_score > 0:
+                labels[idx] = best_strategy
+                confidences[idx] = best_score
+            else:
+                labels[idx] = 'mean_rev'
+                confidences[idx] = 0.33  # Low confidence default
     
     df['target'] = labels
+    df['label_confidence'] = confidences
     df = df.iloc[:-25].copy()
     df.dropna(inplace=True)
     
@@ -519,17 +549,25 @@ def train(symbols: list = None, max_candles: int = 15000, verbose: bool = False)
     model_data = {
         'model': model,
         'label_encoder': label_encoder,
-        'feature_names': FEATURE_COLUMNS
+        'feature_names': FEATURE_COLUMNS,
+        'confidence_threshold': 0.6  # Recommended threshold for trading
     }
     
-    version = f"v3.2-{datetime.now().strftime('%Y%m%d-%H%M')}"
+    version = f"v3.3-{datetime.now().strftime('%Y%m%d-%H%M')}"
+    
+    # Calculate average label confidence from training data
+    avg_label_confidence = full_df['label_confidence'].mean() if 'label_confidence' in full_df.columns else 0.5
     
     metadata = {
         'symbols': symbols,
         'candles_per_symbol': max_candles,
         'total_samples': len(full_df),
         'training_time_seconds': time.time() - total_start_time,
-        'class_distribution': {str(k): int(v) for k, v in y.value_counts().items()}
+        'class_distribution': {str(k): int(v) for k, v in y.value_counts().items()},
+        'avg_label_confidence': float(avg_label_confidence),
+        'confidence_threshold': 0.6,
+        'labeling_method': 'multi_window_win_rate',
+        'lookforward_windows': [12, 24, 36]
     }
     
     success = upload_model(
