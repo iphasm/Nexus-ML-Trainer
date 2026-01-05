@@ -67,15 +67,20 @@ def signal_handler(signum, frame):
 
 
 def fetch_crypto_data(symbol: str, max_candles: int = 15000, verbose: bool = False) -> pd.DataFrame:
-    """Fetch crypto data from Binance Futures."""
+    """
+    Fetch crypto data with fallback sources.
+    Primary: Binance Futures API
+    Fallback: yfinance (for BTC, ETH, etc.)
+    """
     global interrupted
     
     if interrupted:
         return None
     
+    # Try Binance first
     try:
         if verbose:
-            print(f"  📊 Descargando datos de {symbol}...", flush=True)
+            print(f"  📊 Intentando Binance para {symbol}...", flush=True)
         
         client = Client()
         
@@ -86,25 +91,94 @@ def fetch_crypto_data(symbol: str, max_candles: int = 15000, verbose: bool = Fal
             limit=min(max_candles, 1500)
         )
         
-        if verbose:
-            print(f"  ✅ Recibidos {len(klines)} registros de {symbol}", flush=True)
+        if klines and len(klines) > 0:
+            if verbose:
+                print(f"  ✅ Recibidos {len(klines)} registros de Binance", flush=True)
+            
+            # Process data
+            df = pd.DataFrame(klines, columns=[
+                'timestamp', 'open', 'high', 'low', 'close', 'volume',
+                'close_time', 'quote_asset_volume', 'trades',
+                'taker_buy_base', 'taker_buy_quote', 'ignore'
+            ])
+            df = df.astype(float)
+            df['timestamp'] = pd.to_datetime(df['timestamp'], unit='ms')
+            df = df.sort_values('timestamp').reset_index(drop=True)
+            
+            return df
+        else:
+            logger.warning(f"Binance returned empty data for {symbol}")
+            
+    except Exception as e:
+        logger.warning(f"Binance failed for {symbol}: {str(e)[:100]}")
+    
+    # Fallback to yfinance
+    try:
+        import yfinance as yf
         
-        # Process data
-        df = pd.DataFrame(klines, columns=[
-            'timestamp', 'open', 'high', 'low', 'close', 'volume',
-            'close_time', 'quote_asset_volume', 'trades',
-            'taker_buy_base', 'taker_buy_quote', 'ignore'
-        ])
-        df = df.astype(float)
-        df['timestamp'] = pd.to_datetime(df['timestamp'], unit='ms')
+        # Map symbol to yfinance ticker
+        yf_symbol_map = {
+            'BTCUSDT': 'BTC-USD',
+            'ETHUSDT': 'ETH-USD',
+            'BNBUSDT': 'BNB-USD',
+            'SOLUSDT': 'SOL-USD',
+            'XRPUSDT': 'XRP-USD',
+            'ADAUSDT': 'ADA-USD',
+            'AVAXUSDT': 'AVAX-USD',
+            'DOGEUSDT': 'DOGE-USD',
+            'DOTUSDT': 'DOT-USD',
+            'MATICUSDT': 'MATIC-USD',
+            'LINKUSDT': 'LINK-USD',
+            'ATOMUSDT': 'ATOM-USD',
+            'LTCUSDT': 'LTC-USD',
+            'UNIUSDT': 'UNI-USD',
+            'APTUSDT': 'APT-USD',
+        }
+        
+        yf_symbol = yf_symbol_map.get(symbol)
+        if not yf_symbol:
+            logger.warning(f"No yfinance mapping for {symbol}")
+            return None
+        
+        if verbose:
+            print(f"  🔄 Intentando yfinance para {yf_symbol}...", flush=True)
+        
+        # Download 30 days of 15m data (max available from yfinance)
+        ticker = yf.Ticker(yf_symbol)
+        df = ticker.history(period="30d", interval="15m")
+        
+        if df.empty:
+            logger.warning(f"yfinance returned empty data for {yf_symbol}")
+            return None
+        
+        # Rename columns to match expected format
+        df = df.reset_index()
+        df.columns = [col.lower() for col in df.columns]
+        
+        # Rename 'datetime' or 'date' to 'timestamp'
+        if 'datetime' in df.columns:
+            df = df.rename(columns={'datetime': 'timestamp'})
+        elif 'date' in df.columns:
+            df = df.rename(columns={'date': 'timestamp'})
+        
+        # Ensure required columns exist
+        required = ['timestamp', 'open', 'high', 'low', 'close', 'volume']
+        if not all(col in df.columns for col in required):
+            logger.warning(f"yfinance missing columns for {yf_symbol}")
+            return None
+        
+        df = df[required].copy()
         df = df.sort_values('timestamp').reset_index(drop=True)
+        
+        if verbose:
+            print(f"  ✅ Recibidos {len(df)} registros de yfinance", flush=True)
         
         return df
         
     except Exception as e:
-        if verbose:
-            print(f"  ❌ Error en Binance para {symbol}: {str(e)}", flush=True)
+        logger.error(f"yfinance also failed for {symbol}: {str(e)[:100]}")
         return None
+
 
 
 def simulate_trade(df: pd.DataFrame, idx: int, strategy: str, lookforward: int = 24) -> bool:
