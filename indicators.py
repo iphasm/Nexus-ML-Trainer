@@ -1,27 +1,33 @@
 """
 Technical Indicators Module
 Calculates all indicators required for ML model training.
+Uses 'ta' library instead of 'pandas-ta' for better PyPI compatibility.
 """
 
 import pandas as pd
 import numpy as np
-import pandas_ta as ta
+from ta.trend import ADXIndicator, EMAIndicator, SMAIndicator, MACD
+from ta.momentum import RSIIndicator, WilliamsRIndicator, UltimateOscillator
+from ta.volatility import AverageTrueRange, BollingerBands
+from ta.volume import MFIIndicator, ChaikinMoneyFlowIndicator, EaseOfMovementIndicator
 
 
 def calculate_adx(df: pd.DataFrame, period: int = 14) -> pd.Series:
-    """Calculate proper ADX using pandas-ta."""
-    adx_df = ta.adx(df['high'], df['low'], df['close'], length=period)
-    if adx_df is None:
+    """Calculate ADX using ta library."""
+    try:
+        adx = ADXIndicator(df['high'], df['low'], df['close'], window=period)
+        return adx.adx().fillna(0).clip(0, 100)
+    except Exception:
         return pd.Series(0, index=df.index)
-    return adx_df.iloc[:, 0].fillna(0).clip(0, 100)
 
 
 def calculate_mfi(df: pd.DataFrame, period: int = 14) -> pd.Series:
-    """Calculate MFI using pandas-ta."""
-    mfi = ta.mfi(df['high'], df['low'], df['close'], df['volume'], length=period)
-    if mfi is None:
+    """Calculate MFI using ta library."""
+    try:
+        mfi = MFIIndicator(df['high'], df['low'], df['close'], df['volume'], window=period)
+        return mfi.money_flow_index().fillna(50).clip(0, 100)
+    except Exception:
         return pd.Series(50, index=df.index)
-    return mfi.fillna(50).clip(0, 100)
 
 
 def add_indicators(df: pd.DataFrame) -> pd.DataFrame:
@@ -34,33 +40,39 @@ def add_indicators(df: pd.DataFrame) -> pd.DataFrame:
     low = df['low']
     volume = df['volume']
     
-    # === BASIC INDICATORS (using pandas-ta) ===
+    # === BASIC INDICATORS ===
     # RSI (14)
-    df['rsi'] = ta.rsi(close, length=14)
-    if df['rsi'] is None:
+    try:
+        rsi_indicator = RSIIndicator(close, window=14)
+        df['rsi'] = rsi_indicator.rsi().fillna(50)
+    except Exception:
         df['rsi'] = 50
-    df['rsi'] = df['rsi'].fillna(50)
     
     # ATR (14)
-    df['atr'] = ta.atr(high, low, close, length=14)
-    if df['atr'] is None:
+    try:
+        atr_indicator = AverageTrueRange(high, low, close, window=14)
+        df['atr'] = atr_indicator.average_true_range().fillna(0)
+    except Exception:
         df['atr'] = 0
-    df['atr'] = df['atr'].fillna(0)
     df['atr_pct'] = (df['atr'] / close) * 100
     
     # ADX
     df['adx'] = calculate_adx(df, period=14)
     
-    # EMAs (using pandas-ta)
-    df['ema_9'] = ta.ema(close, length=9)
-    df['ema_20'] = ta.ema(close, length=20)
-    df['ema_50'] = ta.ema(close, length=50)
-    df['ema_200'] = ta.ema(close, length=200)
+    # EMAs
+    try:
+        df['ema_9'] = EMAIndicator(close, window=9).ema_indicator()
+        df['ema_20'] = EMAIndicator(close, window=20).ema_indicator()
+        df['ema_50'] = EMAIndicator(close, window=50).ema_indicator()
+        df['ema_200'] = EMAIndicator(close, window=200).ema_indicator()
+    except Exception:
+        df['ema_9'] = close
+        df['ema_20'] = close
+        df['ema_50'] = close
+        df['ema_200'] = close
     
     # Fill NaN in EMAs
     for col in ['ema_9', 'ema_20', 'ema_50', 'ema_200']:
-        if df[col] is None:
-            df[col] = close
         df[col] = df[col].fillna(method='bfill').fillna(close)
     
     # Trend Strength (EMA divergence)
@@ -73,25 +85,25 @@ def add_indicators(df: pd.DataFrame) -> pd.DataFrame:
     
     # === v3.0 FEATURES ===
     
-    # MACD (using pandas-ta)
-    macd_df = ta.macd(close, fast=12, slow=26, signal=9)
-    if macd_df is not None:
-        df['macd'] = macd_df.iloc[:, 0]
-        df['macd_signal'] = macd_df.iloc[:, 2]
-        df['macd_hist'] = macd_df.iloc[:, 1]
-    else:
+    # MACD
+    try:
+        macd = MACD(close, window_slow=26, window_fast=12, window_sign=9)
+        df['macd'] = macd.macd().fillna(0)
+        df['macd_signal'] = macd.macd_signal().fillna(0)
+        df['macd_hist'] = macd.macd_diff().fillna(0)
+    except Exception:
         df['macd'] = 0
         df['macd_signal'] = 0
         df['macd_hist'] = 0
     df['macd_hist_norm'] = df['macd_hist'] / close * 100
     
-    # Bollinger Bands (using pandas-ta)
-    bb = ta.bbands(close, length=20, std=2.0)
-    if bb is not None:
-        df['bb_middle'] = bb.iloc[:, 1]
-        df['bb_upper'] = bb.iloc[:, 2]
-        df['bb_lower'] = bb.iloc[:, 0]
-    else:
+    # Bollinger Bands
+    try:
+        bb = BollingerBands(close, window=20, window_dev=2)
+        df['bb_middle'] = bb.bollinger_mavg()
+        df['bb_upper'] = bb.bollinger_hband()
+        df['bb_lower'] = bb.bollinger_lband()
+    except Exception:
         df['bb_middle'] = close
         df['bb_upper'] = close
         df['bb_lower'] = close
@@ -150,38 +162,57 @@ def add_indicators(df: pd.DataFrame) -> pd.DataFrame:
     df['roc_50'] = (close - close.shift(50)) / close.shift(50) * 100
     
     # Williams %R
-    williams = ta.willr(high, low, close, length=14)
-    df['williams_r'] = williams if williams is not None else -50
+    try:
+        williams = WilliamsRIndicator(high, low, close, lbp=14)
+        df['williams_r'] = williams.williams_r().fillna(-50)
+    except Exception:
+        df['williams_r'] = -50
     
-    # CCI
-    cci = ta.cci(high, low, close, length=20)
-    df['cci'] = cci.fillna(0) if cci is not None else 0
+    # CCI - calculated manually since ta library doesn't have direct CCI
+    tp = (high + low + close) / 3
+    tp_sma = tp.rolling(20).mean()
+    tp_mad = tp.rolling(20).apply(lambda x: np.abs(x - x.mean()).mean())
+    df['cci'] = (tp - tp_sma) / (0.015 * tp_mad + 1e-10)
+    df['cci'] = df['cci'].fillna(0)
     
     # Ultimate Oscillator
-    uo = ta.uo(high, low, close)
-    df['ultimate_osc'] = uo.fillna(50) if uo is not None else 50
+    try:
+        uo = UltimateOscillator(high, low, close)
+        df['ultimate_osc'] = uo.ultimate_oscillator().fillna(50)
+    except Exception:
+        df['ultimate_osc'] = 50
     
     # Volume features
     df['volume_roc_5'] = (volume - volume.shift(5)) / (volume.shift(5) + 1e-10) * 100
     df['volume_roc_21'] = (volume - volume.shift(21)) / (volume.shift(21) + 1e-10) * 100
     
     # Chaikin Money Flow
-    cmf = ta.cmf(high, low, close, volume, length=20)
-    df['chaikin_mf'] = cmf.fillna(0) if cmf is not None else 0
+    try:
+        cmf = ChaikinMoneyFlowIndicator(high, low, close, volume, window=20)
+        df['chaikin_mf'] = cmf.chaikin_money_flow().fillna(0)
+    except Exception:
+        df['chaikin_mf'] = 0
     
     # Force Index
     df['force_index'] = close.diff() * volume
     df['force_index'] = df['force_index'].rolling(13).mean()
     
     # Ease of Movement
-    eom = ta.eom(high, low, close, volume, length=14)
-    df['ease_movement'] = eom.fillna(0) if eom is not None else 0
+    try:
+        eom = EaseOfMovementIndicator(high, low, volume, window=14)
+        df['ease_movement'] = eom.ease_of_movement().fillna(0)
+    except Exception:
+        df['ease_movement'] = 0
     
     # Structure features
-    sma_20 = ta.sma(close, length=20)
-    sma_50 = ta.sma(close, length=50)
-    df['dist_sma20'] = (close - sma_20) / close * 100 if sma_20 is not None else 0
-    df['dist_sma50'] = (close - sma_50) / close * 100 if sma_50 is not None else 0
+    try:
+        sma_20 = SMAIndicator(close, window=20).sma_indicator()
+        sma_50 = SMAIndicator(close, window=50).sma_indicator()
+        df['dist_sma20'] = (close - sma_20) / close * 100
+        df['dist_sma50'] = (close - sma_50) / close * 100
+    except Exception:
+        df['dist_sma20'] = 0
+        df['dist_sma50'] = 0
     
     # Pivot distance (simplified)
     pivot = (high.shift(1) + low.shift(1) + close.shift(1)) / 3

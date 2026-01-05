@@ -10,8 +10,8 @@ python-binance>=1.0.19
 yfinance>=0.2.28
 requests>=2.31.0
 
-# Technical indicators
-pandas-ta>=0.3.14b
+# Technical indicators (using ta instead of pandas-ta due to version issues)
+ta>=0.11.0
 
 # Database
 psycopg2-binary>=2.9.9
