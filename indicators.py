@@ -251,6 +251,15 @@ def add_indicators(df: pd.DataFrame) -> pd.DataFrame:
     # Intraday momentum
     df['intraday_momentum'] = (close - df['open']) / (high - low + 1e-10)
     
+    # === v3.3 MARKET REGIME FEATURE ===
+    # Classifies market state as BULL (2), RANGE (1), or BEAR (0)
+    # Based on EMA50 slope over 20 periods
+    ema50_slope = (df['ema_50'] - df['ema_50'].shift(20)) / df['ema_50']
+    df['market_regime'] = np.where(
+        ema50_slope > 0.02, 2,  # BULL: EMA50 rising >2%
+        np.where(ema50_slope < -0.02, 0, 1)  # BEAR: EMA50 falling >2%, else RANGE
+    )
+    
     df.dropna(inplace=True)
     return df
 
@@ -272,5 +281,7 @@ FEATURE_COLUMNS = [
     'volume_roc_5', 'volume_roc_21', 'chaikin_mf', 'force_index', 'ease_movement',
     'dist_sma20', 'dist_sma50', 'pivot_dist', 'fib_dist',
     'morning_volatility', 'afternoon_volatility', 'gap_up', 'gap_down', 'range_change',
-    'bull_power', 'bear_power', 'momentum_div', 'vpt', 'intraday_momentum'
+    'bull_power', 'bear_power', 'momentum_div', 'vpt', 'intraday_momentum',
+    # v3.3 features
+    'market_regime'
 ]
