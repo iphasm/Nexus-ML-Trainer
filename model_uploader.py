@@ -98,6 +98,10 @@ def upload_model(
         joblib.dump(scaler, scaler_buffer)
         scaler_blob = scaler_buffer.getvalue()
         
+        # Convert numpy types to Python native types for PostgreSQL compatibility
+        accuracy_float = float(accuracy) if accuracy is not None else None
+        cv_score_float = float(cv_score) if cv_score is not None else None
+        
         # Deactivate previous models
         with conn.cursor() as cur:
             cur.execute("UPDATE ml_models SET is_active = FALSE WHERE is_active = TRUE")
@@ -112,8 +116,8 @@ def upload_model(
                 version,
                 psycopg2.Binary(model_blob),
                 psycopg2.Binary(scaler_blob),
-                accuracy,
-                cv_score,
+                accuracy_float,
+                cv_score_float,
                 feature_names,
                 Json(metadata) if metadata else None
             ))
