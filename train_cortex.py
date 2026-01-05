@@ -62,7 +62,7 @@ DEFAULT_SYMBOLS = [
     'NEARUSDT', 'ARBUSDT', 'LTCUSDT', 'BCHUSDT', 'ETCUSDT', 'ALGOUSDT',
     
     # === BYBIT EXCLUSIVES (for coverage) ===
-    'FLOWUSDT', 'PENDLEUSDT', 'MNTUSDT', 'XAIUSDT'
+    'FLOWUSDT', 'PENDLEUSDT', 'XAIUSDT'
 ]
 
 INTERVAL = '15m'
@@ -405,6 +405,24 @@ def train(symbols: list = None, max_candles: int = 15000, verbose: bool = False)
     
     X = full_df[FEATURE_COLUMNS]
     y = full_df['target']
+    
+    # Filter out classes with too few samples (<1% of data)
+    # This prevents CV failures when some folds don't have all classes
+    min_samples_pct = 0.01  # 1% minimum
+    min_samples = int(len(y) * min_samples_pct)
+    class_counts = y.value_counts()
+    valid_classes = class_counts[class_counts >= min_samples].index.tolist()
+    
+    if len(valid_classes) < len(class_counts):
+        removed_classes = class_counts[class_counts < min_samples].index.tolist()
+        print(f"⚠️ Removing rare classes (<{min_samples_pct*100:.0f}%): {', '.join(removed_classes)}")
+        
+        # Filter data to only include valid classes
+        mask = y.isin(valid_classes)
+        X = X[mask]
+        y = y[mask]
+        full_df = full_df[mask]
+        print(f"📊 Filtered samples: {len(full_df):,}")
     
     # Encode labels
     label_encoder = LabelEncoder()
