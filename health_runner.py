@@ -38,8 +38,8 @@ def run_training():
     """Run the training script"""
     global training_complete, training_error
     try:
-        # Get training arguments from environment or use defaults
-        candles = os.getenv('TRAINING_CANDLES', '35000')
+        # Get training arguments from environment or use optimized defaults
+        candles = os.getenv('TRAINING_CANDLES', '12000')  # Optimized for crypto: 4.5 months
         
         result = subprocess.run(
             [sys.executable, 'train_cortex.py', '--candles', candles, '--auto'],
