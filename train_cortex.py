@@ -85,7 +85,7 @@ def signal_handler(signum, frame):
     logger.warning("⚠️ Interrupción detectada (Ctrl+C). Finalizando...")
 
 
-def fetch_crypto_data(symbol: str, max_candles: int = 15000, verbose: bool = False) -> pd.DataFrame:
+def fetch_crypto_data(symbol: str, max_candles: int = 12000, verbose: bool = False) -> pd.DataFrame:
     """
     Fetch crypto data with fallback sources.
     Primary: Binance Futures API (with API keys and proxy if available)
@@ -362,7 +362,7 @@ def label_data(df: pd.DataFrame) -> pd.DataFrame:
     return df
 
 
-def train(symbols: list = None, max_candles: int = 15000, verbose: bool = False):
+def train(symbols: list = None, max_candles: int = 12000, verbose: bool = False):
     """Main training function."""
     # ANSI Colors
     CYAN = "\033[36m"
@@ -604,7 +604,7 @@ def train(symbols: list = None, max_candles: int = 15000, verbose: bool = False)
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description='Nexus Cortex Cloud Trainer')
-    parser.add_argument('--candles', type=int, default=15000,
+    parser.add_argument('--candles', type=int, default=12000,
                        help='Number of 15m candles to analyze')
     parser.add_argument('--symbols', type=int, default=None,
                        help='Limit number of symbols (for testing)')
