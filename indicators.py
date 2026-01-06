@@ -6,10 +6,12 @@ Uses 'ta' library instead of 'pandas-ta' for better PyPI compatibility.
 
 import pandas as pd
 import numpy as np
-from ta.trend import ADXIndicator, EMAIndicator, SMAIndicator, MACD
-from ta.momentum import RSIIndicator, WilliamsRIndicator, UltimateOscillator
-from ta.volatility import AverageTrueRange, BollingerBands
-from ta.volume import MFIIndicator, ChaikinMoneyFlowIndicator, EaseOfMovementIndicator
+from ta.trend import ADXIndicator, EMAIndicator, SMAIndicator, MACD, CCIIndicator, DPOIndicator, KSTIndicator
+from ta.momentum import RSIIndicator, WilliamsRIndicator, UltimateOscillator, StochRSIIndicator
+from ta.volatility import AverageTrueRange, BollingerBands, UlcerIndex
+from ta.volume import MFIIndicator, ChaikinMoneyFlowIndicator, EaseOfMovementIndicator, ForceIndexIndicator, VolumeWeightedAveragePrice
+from ta.others import DailyReturnIndicator, CumulativeReturnIndicator
+import math
 
 
 def calculate_adx(df: pd.DataFrame, period: int = 14) -> pd.Series:
@@ -28,6 +30,135 @@ def calculate_mfi(df: pd.DataFrame, period: int = 14) -> pd.Series:
         return mfi.money_flow_index().fillna(50).clip(0, 100)
     except Exception:
         return pd.Series(50, index=df.index)
+
+
+def calculate_stoch_rsi(df: pd.DataFrame, period: int = 14) -> pd.Series:
+    """Calculate Stochastic RSI."""
+    try:
+        stoch_rsi = StochRSIIndicator(df['close'], window=period)
+        return stoch_rsi.stochrsi_k().fillna(0.5)
+    except Exception:
+        return pd.Series(0.5, index=df.index)
+
+
+def calculate_kst(df: pd.DataFrame) -> pd.Series:
+    """Calculate Know Sure Thing (KST) oscillator."""
+    try:
+        kst = KSTIndicator(df['close'])
+        return kst.kst().fillna(0)
+    except Exception:
+        return pd.Series(0, index=df.index)
+
+
+def calculate_cci(df: pd.DataFrame, period: int = 20) -> pd.Series:
+    """Calculate Commodity Channel Index."""
+    try:
+        cci = CCIIndicator(df['high'], df['low'], df['close'], window=period)
+        return cci.cci().fillna(0)
+    except Exception:
+        return pd.Series(0, index=df.index)
+
+
+def calculate_dpo(df: pd.DataFrame, period: int = 20) -> pd.Series:
+    """Calculate Detrended Price Oscillator."""
+    try:
+        dpo = DPOIndicator(df['close'], window=period)
+        return dpo.dpo().fillna(0)
+    except Exception:
+        return pd.Series(0, index=df.index)
+
+
+def calculate_ulcer_index(df: pd.DataFrame, period: int = 14) -> pd.Series:
+    """Calculate Ulcer Index for volatility measurement."""
+    try:
+        ulcer = UlcerIndex(df['close'], window=period)
+        return ulcer.ulcer_index().fillna(0)
+    except Exception:
+        return pd.Series(0, index=df.index)
+
+
+def calculate_force_index(df: pd.DataFrame, period: int = 13) -> pd.Series:
+    """Calculate Force Index."""
+    try:
+        force = ForceIndexIndicator(df['close'], df['volume'], window=period)
+        return force.force_index().fillna(0)
+    except Exception:
+        return pd.Series(0, index=df.index)
+
+
+def calculate_vwap(df: pd.DataFrame) -> pd.Series:
+    """Calculate Volume Weighted Average Price."""
+    try:
+        vwap = VolumeWeightedAveragePrice(df['high'], df['low'], df['close'], df['volume'])
+        return vwap.volume_weighted_average_price().fillna(df['close'])
+    except Exception:
+        return df['close']
+
+
+def calculate_market_regime(df: pd.DataFrame) -> pd.Series:
+    """Calculate market regime based on volatility and trend."""
+    try:
+        # Combine ADX and ATR for regime classification
+        adx = calculate_adx(df)
+        atr_pct = (calculate_atr(df) / df['close']) * 100
+
+        # Simple regime logic
+        regime = pd.Series(0, index=df.index)  # Default: ranging
+
+        # Trending up: ADX > 25 and positive slope
+        trending_up = (adx > 25) & (df['close'] > df['close'].shift(20))
+        regime[trending_up] = 1
+
+        # Trending down: ADX > 25 and negative slope
+        trending_down = (adx > 25) & (df['close'] < df['close'].shift(20))
+        regime[trending_down] = -1
+
+        # High volatility ranging
+        high_vol = (atr_pct > atr_pct.rolling(50).mean() * 1.2)
+        regime[high_vol] = 2
+
+        return regime
+    except Exception:
+        return pd.Series(0, index=df.index)
+
+
+def calculate_sentiment_proxy(df: pd.DataFrame) -> pd.Series:
+    """Calculate sentiment proxy based on price action patterns."""
+    try:
+        # Simple sentiment proxy based on buying vs selling pressure
+        returns = df['close'].pct_change()
+
+        # Bullish signals
+        bullish = (
+            (df['close'] > df['open']) &  # Green candle
+            (df['close'] > df['close'].shift(1)) &  # Higher close
+            (df['volume'] > df['volume'].rolling(10).mean())  # Above average volume
+        )
+
+        # Bearish signals
+        bearish = (
+            (df['close'] < df['open']) &  # Red candle
+            (df['close'] < df['close'].shift(1)) &  # Lower close
+            (df['volume'] > df['volume'].rolling(10).mean())  # Above average volume
+        )
+
+        sentiment = pd.Series(0, index=df.index)
+        sentiment[bullish] = 1
+        sentiment[bearish] = -1
+
+        # Smooth with rolling average
+        return sentiment.rolling(5).mean().fillna(0)
+    except Exception:
+        return pd.Series(0, index=df.index)
+
+
+def calculate_atr(df: pd.DataFrame, period: int = 14) -> pd.Series:
+    """Calculate ATR using ta library."""
+    try:
+        atr = AverageTrueRange(df['high'], df['low'], df['close'], window=period)
+        return atr.average_true_range().fillna(0)
+    except Exception:
+        return pd.Series(0, index=df.index)
 
 
 def add_indicators(df: pd.DataFrame) -> pd.DataFrame:
@@ -73,7 +204,7 @@ def add_indicators(df: pd.DataFrame) -> pd.DataFrame:
     
     # Fill NaN in EMAs
     for col in ['ema_9', 'ema_20', 'ema_50', 'ema_200']:
-        df[col] = df[col].fillna(method='bfill').fillna(close)
+        df[col] = df[col].bfill().fillna(close)
     
     # Trend Strength (EMA divergence)
     df['trend_str'] = (df['ema_20'] - df['ema_50']) / close * 100
@@ -259,7 +390,47 @@ def add_indicators(df: pd.DataFrame) -> pd.DataFrame:
         ema50_slope > 0.02, 2,  # BULL: EMA50 rising >2%
         np.where(ema50_slope < -0.02, 0, 1)  # BEAR: EMA50 falling >2%, else RANGE
     )
-    
+
+    # === ADVANCED FEATURES FOR v3.4 ===
+    # Additional momentum indicators
+    df['stoch_rsi'] = calculate_stoch_rsi(df, 14)
+    df['kst'] = calculate_kst(df)
+    df['cci'] = calculate_cci(df, 20)
+    df['dpo'] = calculate_dpo(df, 20)
+
+    # Advanced volatility
+    df['ulcer_index'] = calculate_ulcer_index(df, 14)
+
+    # Advanced volume indicators
+    df['force_index'] = calculate_force_index(df, 13)
+    df['vwap'] = calculate_vwap(df)
+
+    # Market regime (enhanced version)
+    df['market_regime_advanced'] = calculate_market_regime(df)
+    df['sentiment_proxy'] = calculate_sentiment_proxy(df)
+
+    # Feature interactions
+    df['rsi_stoch_rsi'] = df['rsi'] * df['stoch_rsi']
+    df['cci_kst'] = df['cci'] * df['kst']
+    df['vol_price_change'] = df['atr_pct'] * df['roc_5'].abs()
+    df['regime_volatility'] = df['market_regime'] * df['atr_pct']
+
+    # Statistical features
+    df['returns_skew'] = df['close'].pct_change().rolling(20).skew().fillna(0)
+    df['returns_kurtosis'] = df['close'].pct_change().rolling(20).kurt().fillna(0)
+
+    # Time-based features
+    if hasattr(df.index, 'hour'):
+        df['hour_sin'] = np.sin(2 * np.pi * df.index.hour / 24)
+        df['hour_cos'] = np.cos(2 * np.pi * df.index.hour / 24)
+        df['day_sin'] = np.sin(2 * np.pi * df.index.dayofweek / 7)
+        df['day_cos'] = np.cos(2 * np.pi * df.index.dayofweek / 7)
+    else:
+        df['hour_sin'] = 0
+        df['hour_cos'] = 0
+        df['day_sin'] = 0
+        df['day_cos'] = 0
+
     df.dropna(inplace=True)
     return df
 
@@ -283,5 +454,12 @@ FEATURE_COLUMNS = [
     'morning_volatility', 'afternoon_volatility', 'gap_up', 'gap_down', 'range_change',
     'bull_power', 'bear_power', 'momentum_div', 'vpt', 'intraday_momentum',
     # v3.3 features
-    'market_regime'
+    'market_regime',
+    # v3.4 ADVANCED FEATURES
+    'stoch_rsi', 'kst', 'dpo',
+    'ulcer_index', 'vwap',
+    'market_regime_advanced', 'sentiment_proxy',
+    'rsi_stoch_rsi', 'cci_kst', 'vol_price_change', 'regime_volatility',
+    'returns_skew', 'returns_kurtosis',
+    'hour_sin', 'hour_cos', 'day_sin', 'day_cos'
 ]
