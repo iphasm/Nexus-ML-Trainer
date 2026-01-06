@@ -6,6 +6,7 @@
     },
     "deploy": {
         "startCommand": "python train_cortex.py --candles 35000 --auto",
+        "healthcheckPath": null,
         "restartPolicyType": "ON_FAILURE",
         "restartPolicyMaxRetries": 3
     }
