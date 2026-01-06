@@ -5,6 +5,7 @@ xgboost>=2.0.0
 scikit-learn>=1.3.0
 joblib>=1.3.0
 optuna>=3.4.0  # Hyperparameter optimization
+flask>=3.0.0  # Health check endpoint
 
 # Data sources
 python-binance>=1.0.19
