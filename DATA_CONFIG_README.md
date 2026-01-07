@@ -156,3 +156,7 @@ DEGRADATION_WINDOW=5           # Últimas 5 evaluaciones para análisis
 ---
 
 **Resultado**: Sistema de ML con mantenimiento automático, optimizado para crypto markets con retrain inteligente basado en performance real.
+
+
+
+
